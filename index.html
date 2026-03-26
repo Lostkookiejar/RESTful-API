@@ -1,27 +1,26 @@
 <!DOCTYPE <html>
 <head>
   <title>My API Documentation</title>
-  
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+    }
+  </style>
 </head>
 <body>
-  <h1>Welcome to teh API</h1>
+  <h1>Welcome to the API</h1>
   <h2>How to use this API</h2>
   <ul>
-    <li><strong>GET /posts/:id :</strong> 
-      Get a post by ID. Replace ':id' with the ID of the post you want to retrieve.
+    <li><strong>POST /signup :</strong> 
+      Register a new user. The payload should be a JSON object containing 'username' and 'password' keys.
     </li>
     <li>
-      <strong>POST /posts :</strong> 
-      Create a new post. The body should be a JSON object with 'title', 'content', and 'author'
-    keys.
+      <strong>POST /login :</strong> 
+      Authenticate an existing user. The payload should be a JSON object with 'username' and 'password' keys. This endpoint returns a JWT toekn when successful.
     </li>
     <li>
-      <strong>PUT /posts/:id :</strong> 
-      Delete a post. Replace ':id' with the ID of the post you want to delete.
-    </li>
-    <li>
-      <strong>DELETE /posts/:id :</strong> 
-      Delete a post. Replace ':id' with the ID of the post you want to delete.
+      <strong>GET /logout :</strong> 
+      Invalidated a user's JWT token. This endpoint does not require a payload. 
     </li>
   </ul>
 </body>

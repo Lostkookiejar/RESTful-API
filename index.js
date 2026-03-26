@@ -1,3 +1,5 @@
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 let express = require("express");
 let path = require("path");
 const cors = require("cors");
@@ -6,7 +8,7 @@ app.use(cors());
 app.use(express.json());
 const { Pool } = require("pg");
 require("dotenv").config();
-const { DATABASE_URL } = process.env;
+const { DATABASE_URL, SECRET_KEY } = process.env;
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
@@ -27,29 +29,27 @@ async function getPostgresVersion() {
 
 getPostgresVersion();
 
-app.post("/posts", async (req, res) => {
+app.post("/signup", async (req, res) => {
   const client = await pool.connect();
   try {
-    const data = {
-      title: req.body.title,
-      content: req.body.content,
-      author: req.body.author,
-      created_at: new Date().toISOString(),
-    };
+    const { username, password } = req.body;
+    const hashedPassword = await bcrypt.hash(password, 12);
 
-    const query =
-      "INSERT INTO posts(title, content, author, created_at) VALUES ($1, $2, $3, $4) RETURNING id";
-    const params = [data.title, data.content, data.author, data.created_at];
+    const userResult = await client.query(
+      "select * from users where username = $1",
+      [username],
+    );
 
-    const result = await client.query(query, params);
-    data.id = result.rows[0].id;
+    if (userResult.rows.length > 0) {
+      return res.status(400).json({ message: "Username already taken." });
+    }
 
-    console.log(`Post created successfully with id ${data.id}`);
-    res.json({
-      status: "success",
-      data: data,
-      message: "Post created successfully",
-    });
+    await client.query(
+      "INSERT into users (username, password) values ($1, $2)",
+      [username, hashedPassword],
+    );
+
+    res.status(201).json({ message: "User registered successfully" });
   } catch (error) {
     console.error("Error: ", error.message);
     res.status(500).json({ error: error.message });
@@ -58,63 +58,59 @@ app.post("/posts", async (req, res) => {
   }
 });
 
-app.get("/posts", async (req, res) => {
+app.post("/login", async (req, res) => {
   const client = await pool.connect();
   try {
-    const query = "SELECT * FROM posts";
-    const result = await client.query(query);
-    res.json(result.rows);
-  } catch (err) {
-    console.log(err.stack);
-    res.status(500).send("An error occured");
+    const result = await client.query(
+      `
+      SELECT * FROM users 
+      WHERE username = $1`,
+      [req.body.username],
+    );
+
+    const user = result.rows[0];
+
+    if (!user)
+      return res
+        .status(400)
+        .json({ message: "Username or password incorrect" });
+
+    const passwordIsValid = await bcrypt.compare(
+      req.body.password,
+      user.password,
+    );
+    if (!passwordIsValid)
+      return res.status(401).json({ auth: false, token: null });
+
+    var token = jwt.sign({ id: user.id, username: user.username }, SECRET_KEY, {
+      expiresIn: 86400,
+    });
+    res.status(200).json({ auth: true, token: token });
+  } catch (error) {
+    console.error("Error: ", error.message);
+    res.status(500).json({ error: error.message });
   } finally {
     client.release();
+  }
+});
+
+app.get("/username", (req, res) => {
+  const authToken = req.headers.authorization;
+
+  if (!authToken) return res.status(401).json({ error: "Access Denied" });
+
+  try {
+    const verified = jwt.verify(authToken, SECRET_KEY);
+    res.json({
+      username: verified.username,
+    });
+  } catch (err) {
+    res.status(400).json({ error: "Invalid Token" });
   }
 });
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname + "/index.html"));
-});
-
-app.put("/posts/:id", async (req, res) => {
-  const id = req.params.id;
-  const updatedData = req.body;
-  const client = await pool.connect();
-  try {
-    const updateQuery =
-      "UPDATE posts SET title = $1, content = $2, author = $3 WHERE id = $4";
-    const queryData = [
-      updatedData.title,
-      updatedData.content,
-      updatedData.author,
-      id,
-    ];
-    await client.query(updateQuery, queryData);
-
-    res.json({ status: "success", message: "Post updated successfully" });
-  } catch (error) {
-    console.error("Error:", error.message);
-    res.status(500).json({ error: error.message });
-  } finally {
-    client.release();
-  }
-});
-
-app.delete("/posts/:id", async (req, res) => {
-  const id = req.params.id;
-  const client = await pool.connect();
-
-  try {
-    const deleteQuery = "DELETE FROM posts WHERE id = $1";
-    await client.query(deleteQuery, [id]);
-
-    res.json({ status: "success", message: "Post deleted successfully" });
-  } catch (error) {
-    console.error("Error: ", error.message);
-    res.status(500).json({ error: error.message });
-  } finally {
-    client.release();
-  }
 });
 
 app.use((req, res) => {
